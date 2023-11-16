@@ -29,6 +29,7 @@ async function run() {
 
     const menuCollection = client.db("bistroDB").collection("menu");
     const reviewCollection = client.db("bistroDB").collection("reviews");
+    const cartCollection = client.db("bistroDB").collection("carts");
 
     app.get("/menu", async(req, res)=>{
         try{
@@ -46,6 +47,12 @@ async function run() {
       }catch(error){
           console.log(error);
       }
+  })
+
+  app.post('/carts', async(req,body)=>{
+    const cartItems = req.body;
+    const result = await cartCollection.insertOne(cartItems)
+    res.send(result)
   })
 
 
