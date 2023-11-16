@@ -49,7 +49,7 @@ async function run() {
       }
   })
 
-  app.post('/carts', async(req,body)=>{
+  app.post('/carts', async(req,res)=>{
     const cartItems = req.body;
     const result = await cartCollection.insertOne(cartItems)
     res.send(result)
