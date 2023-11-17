@@ -10,6 +10,17 @@ app.use(cors());
 app.use(express.json());
 // DB -    - qcAdIKDIe59qPMto
 
+
+// own middleware 
+const verifyToken = (req,res,next)=>{
+  console.log('token in the middleware', req.headers);
+  if(!req.headers.authorization){
+    return res.status(401).send({message: "Forbidden Access"})
+  }
+  const token = req.headers.authorization.split(' ')[1];
+  // next()
+}
+
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.guubgk2.mongodb.net/?retryWrites=true&w=majority`;
 
@@ -32,9 +43,16 @@ async function run() {
     const reviewCollection = client.db("bistroDB").collection("reviews");
     const cartCollection = client.db("bistroDB").collection("carts");
 
+    // JWT Related API
+    app.post('/jwt', async(req,res)=>{
+      const user = req.body;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECURE, {expiresIn: '1h'})
+      res.send({token})
+    })
+
 
     // user related api's here
-    app.get("/users", async(req,res)=>{
+    app.get("/users", verifyToken, async(req,res)=>{
       const result = await usersCollection.find().toArray();
       res.send(result)
     })
