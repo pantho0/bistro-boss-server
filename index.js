@@ -3,6 +3,7 @@ const app = express();
 const cors = require("cors");
 const jwt = require('jsonwebtoken')
 require("dotenv").config();
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY)
 const port = process.env.PORT || 5001;
 
 // MiddleWare :
@@ -51,6 +52,36 @@ async function run() {
     const menuCollection = client.db("bistroDB").collection("menu");
     const reviewCollection = client.db("bistroDB").collection("reviews");
     const cartCollection = client.db("bistroDB").collection("carts");
+    const paymentCollection = client.db("bistroDB").collection("payments");
+
+
+    // Stripe Payment Intent
+    app.post('/create-payment-intent', async(req,res)=>{
+      const {price} = req.body;
+      const amount = parseFloat(price * 100);
+      console.log(amount, "amount inside the intendt");
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount : amount,
+        currency : "usd",
+        payment_method_types : ['card']
+      })
+      res.send({
+        clientSecret : paymentIntent.client_secret,
+      })
+    })
+
+    app.post("/payments", async(req,res)=>{
+      const payment = req.body;
+      const paymentResult = await paymentCollection.insertOne(payment)
+      console.log('payment info', payment);
+      // finding out the carts id according to paymenet body req.
+      const query = {_id:{
+        $in: payment.cartIds.map(id => new ObjectId(id))
+      }}
+      const deleteResult = await cartCollection.deleteMany(query)
+      res.send({paymentResult, deleteResult})
+
+    })
 
     // JWT Related API
     app.post('/jwt', async(req,res)=>{
@@ -130,13 +161,37 @@ async function run() {
         console.log(error);
       }
     });
+    // to update menu 
+    app.get("/menu/:id", async(req,res)=>{
+      const id = req.params.id;
+      const query = {_id : id}
+      const result = await menuCollection.findOne(query)
+      res.send(result)
+    })
+    app.patch("/menu/:id", async(req,res)=>{
+      const item = req.body;
+      const id = req.params.id;
+      const filter = {_id : id};
+      const updatedDoc = {
+        $set:{
+          name : item.name,
+          price : item.price,
+          category : item.category,
+          recipe : item.recipe,
+          image : item.image
+        }
+      }
+      const result = await menuCollection.updateOne(filter, updatedDoc);
+      res.send(result)      
 
+    })
+    // to add menu item
     app.post("/menu",verifyToken, verifyAdmin, async(req,res)=>{
       const item = req.body;
       const result = await menuCollection.insertOne(item);
       res.send(result)
     })
-
+    
     app.delete("/menu/:id", verifyToken, verifyAdmin, async(req,res)=>{
       const id = req.params.id;
       const query = {_id: new ObjectId(id)}
