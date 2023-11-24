@@ -54,6 +54,16 @@ async function run() {
     const cartCollection = client.db("bistroDB").collection("carts");
     const paymentCollection = client.db("bistroDB").collection("payments");
 
+    const verifyAdmin = async(req,res,next)=>{
+      const email = req.decoded.email;
+      const query = {email : email};
+      const user = await usersCollection.findOne(query);
+      const isAdmin = user?.role === "admin"
+      if(!isAdmin){
+        return res.status(403).send({message: "Forbidden"})
+      }
+      next()
+    }
 
     // Stripe Payment Intent
     app.post('/create-payment-intent', async(req,res)=>{
@@ -74,7 +84,7 @@ async function run() {
       const payment = req.body;
       const paymentResult = await paymentCollection.insertOne(payment)
       console.log('payment info', payment);
-      // finding out the carts id according to paymenet body req.
+      // finding out the carts id according to paymenet body req. and delete the orders
       const query = {_id:{
         $in: payment.cartIds.map(id => new ObjectId(id))
       }}
@@ -83,22 +93,58 @@ async function run() {
 
     })
 
+    app.get("/payments/:email", verifyToken, async(req,res)=>{
+      const email = req.params.email;
+      const query = {email : email};
+      if(req.params.email !== req.decoded.email){
+        res.status(401).send({message : "Forbidden Access"})
+      }
+      const result = await paymentCollection.find(query).toArray();
+      res.send(result)
+    })
+
+    // Admin Stats api 
+    app.get("/admin-stats",verifyToken, verifyAdmin, async(req,res)=>{
+      const users = await usersCollection.estimatedDocumentCount();
+      const menuItems = await menuCollection.estimatedDocumentCount();
+      const orders = await paymentCollection.estimatedDocumentCount();
+      //finding out the revenue but not the best way
+      // const paymenets = await paymentCollection.find().toArray();
+      // const revenue = paymenets.reduce((prev, payment)=> prev+payment.price,0)
+      const result = await paymentCollection.aggregate([
+        {
+          $group:{
+            _id : null,
+            totalRevenue : {
+              $sum: "$price"
+            }
+          }
+        }
+      ]).toArray();
+
+      const revenue = result.length > 0 ? result[0].totalRevenue : 0;
+
+
+
+      res.send({
+        users,
+        menuItems,
+        orders,
+        revenue
+      })
+    }) 
+
+
+
+
+
     // JWT Related API
     app.post('/jwt', async(req,res)=>{
       const user = req.body;
       const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECURE, {expiresIn: '1h'})
       res.send({token})
     })
-    const verifyAdmin = async(req,res,next)=>{
-      const email = req.decoded.email;
-      const query = {email : email};
-      const user = await usersCollection.findOne(query);
-      const isAdmin = user?.role === "admin"
-      if(!isAdmin){
-        return res.status(403).send({message: "Forbidden"})
-      }
-      next()
-    }
+    
 
     // user related api's here
     app.get("/users", verifyToken, verifyAdmin, async(req,res)=>{
